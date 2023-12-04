@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<Container version="2">
+    <Name>regrabarr</Name>
+    <Repository>mtrogman/regrabarr:latest</Repository>
+    <Registry>https://hub.docker.com/r/mtrogman/grabarr</Registry>
+    <Branch>
+        <Tag>latest</Tag>
+        <TagDescription>Latest stable release</TagDescription>
+    </Branch>
+    <Network>host</Network>
+    <Shell>bash</Shell>
+    <Privileged>false</Privileged>
+    <Support>https://discord.gg/jZWZh5CS6c</Support>
+    <Project>https://github.com/mtrogman/grabarr</Project>
+    <Overview>Grabarr is a Discord bot that allows end users to 'grab' (Search and download) media.</Overview>
+    <Category>Tools: MediaServer Status:Beta</Category>
+    <TemplateURL>https://raw.githubusercontent.com/mtrogman/unraid_templates/main/templates/grabarr.xml</TemplateURL>
+    <Maintainer>
+        <WebPage>https://github.com/mtrogman</WebPage>
+    </Maintainer>
+    <Config Name="Config Path" Target="/config" Default="/mnt/user/appdata/grabarr/config" Mode="rw" Description="Where config file will be stored" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/grabarr/config</Config>
+</Container>
