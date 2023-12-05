@@ -7,7 +7,6 @@ Grabbing content will have the bot search and if content is available will start
 
 ## Requirements
 
-- A Plex Media Server
 - Sonarr
 - Radarr
 - A Discord server
