@@ -244,11 +244,71 @@ class TVSeriesSelector(Select):
         selected_series_data = self.series_results[selected_series_index]
         seasons_results = await fetch_seasons(selected_series_data)
         self.media_info['series'] = selected_series_data['title']
-        self.media_info['seriesId'] = selected_series_data['id']
 
         # Add media_info parameter to callback method
-        await interaction.response.edit_message(content="Please select a season",  view=SeasonSelectorView(seasons_results, self.media_info))
+        await interaction.response.edit_message(content="Please select season(s) you wish to request",  view=SeasonSelectorView(seasons_results, self.media_info))
 
+
+# Call to get list of top 10 TV Series found that match the search and to put into Discord Dropdown
+async def fetch_series(series_name):
+    url = f"{sonarr_base_url}/series/lookup?term={series_name}"
+    headers = {"X-Api-Key": sonarr_api_key}
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  # Raise an exception for non-200 responses
+
+        if response.status_code == 200:
+            series_list = response.json()
+            return series_list[:10]  # Return the first 10 series
+        else:
+            return []
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error fetching series data: {e}")
+        return []
+
+
+# View & Select required to build out TV Season Discord Dropdown.
+class SeasonSelectorView(View):
+    def __init__(self, season_results, media_info):
+        super().__init__()
+        self.season_results = season_results
+        self.media_info = media_info
+        self.add_item(SeasonSelector(season_results, media_info))
+
+
+class SeasonSelector(Select):
+    def __init__(self, seasons_results, media_info):
+        self.seasons_results = seasons_results
+        self.media_info = media_info
+        options = [
+            discord.SelectOption(label="Latest Season"),
+            discord.SelectOption(label="All Seasons"),
+            discord.SelectOption(label="Choose which seasons")
+        ]
+        super().__init__(placeholder="What season(s) to request", options=options, min_values=1, max_values=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_season_index = self.values[0]
+        print(selected_season_index)
+        if selected_season_index == "Latest Season":
+            print("you choose latest season")
+        elif selected_season_index == "All Seasons":
+            print("you choose all seasons")
+        else:
+            print("you choose other")
+        exit(0)
+        self.media_info['seasonNumber'] = self.seasons_results[selected_season_index]['seasonNumber']
+        episode_results = await fetch_episodes(media_info)
+        await interaction.response.edit_message(content="Please select an episode", view=EpisodeSelectorView(episode_results, self.media_info))
+
+# Call to get list of seasons within the series and put into Discord Dropdown
+async def fetch_seasons(selected_series_data, ):
+    seasons = selected_series_data.get('seasons', [])
+    # Filter out season 0 which is extras
+    seasons = [season for season in seasons if season['seasonNumber'] != 0]
+
+    return seasons
 
 media_info = {}
 
@@ -278,10 +338,10 @@ async def request_movie(ctx, *, movie: str):
     await ctx.response.send_message("Select a movie to grab", view=MovieSelectorView(movie_results, media_info), ephemeral=True)
 
 
-# Bot command to "grab" (search) for TV Show 
-@bot.tree.command(name="Request_Series", description="Will search and download selected TV Series")
+# Bot command to "grab" (search) for TV Show
+@bot.tree.command(name="request_series", description="Will search and download selected TV Series")
 @app_commands.describe(series="What TV series should we grab?")
-async def Grab_Series(ctx, *, series: str):
+async def request_series(ctx, *, series: str):
     # Fetch TV series matching the input series name
     series_results = await fetch_series(series)
     if not series_results:
