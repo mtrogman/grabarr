@@ -98,6 +98,60 @@ class ConfirmButtonsMovie(View):
         await self.interaction.followup.send(content="Cancelled the request.", ephemeral=True)
 
 
+class ConfirmButtonsSeries(View):
+    def __init__(self, interaction, media_info):
+        super().__init__()
+        regrab_button = Button(style=discord.ButtonStyle.primary, label="Request")
+        regrab_button.callback = self.regrab_callback
+        self.add_item(regrab_button)
+
+        cancel_button = Button(style=discord.ButtonStyle.danger, label="Cancel")
+        cancel_button.callback = self.cancel_callback
+        self.add_item(cancel_button)
+
+        self.interaction = interaction
+        self.media_info = media_info
+
+    async def grab_callback(self, button):
+        # Checks if episodeFileId is 0 and if it is doesn't delete it since it's not there.
+        if media_info['episodeFileId'] != 0:
+            # Delete the show
+            delete_url = f"{sonarr_base_url}/episodefile/{media_info['episodeFileId']}?apikey={sonarr_api_key}"
+            try:
+                delete_response = requests.delete(delete_url)
+                delete_response.raise_for_status()  # Raise an exception for non-200 responses
+                logging.info(f"Deleted EpisodeFileID {media_info['episodeFileId']} with a response of {delete_response.status_code}")
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Error deleting EpisodeFileID {media_info['episodeFileId']}: {e}")
+        else:
+            logging.info(f"No Episode Found")
+
+        # Search for the episode
+        search_url = f"{sonarr_base_url}/command/"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Api-Key": sonarr_api_key
+        }
+        data = {
+            "episodeIds": [media_info['episodeId']],
+            "name": "EpisodeSearch",
+        }
+
+        try:
+            search_response = requests.post(search_url, headers=headers, json=data)
+            search_response.raise_for_status()  # Raise an exception for non-200 responses
+            logging.info(f"Searching for EpisodeID {media_info['episodeNumber']} with a response of {search_response.status_code}")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error searching for EpisodeID {media_info['episodeId']}: {e}")
+
+        await self.interaction.delete_original_response()
+        await self.interaction.followup.send(content=f"`{self.interaction.user.name} your request to (re)grab {media_info['series']}` Season {media_info['seasonNumber']}) Episode {media_info['episodeNumber']} is being processed.")
+
+    # Cancel just responds with msg
+    async def cancel_callback(self, button):
+        await self.interaction.delete_original_response()
+        await self.interaction.followup.send(content="Cancelled the request.", ephemeral=True)
+
 # View & Select required to build out Discord Dropdown.
 class MovieSelectorView(View):
     def __init__(self, search_results, media_info):
@@ -162,6 +216,40 @@ async def fetch_movie(movie_name):
         return []
 
 
+# View & Select required to build out TV Series Discord Dropdown.
+class SeriesSelectorView(View):
+    def __init__(self, series_results, media_info):
+        super().__init__()
+        self.series_results = series_results
+        self.media_info = media_info
+        self.add_item(TVSeriesSelector(series_results, media_info))
+
+
+class TVSeriesSelector(Select):
+    def __init__(self, series_results, media_info):
+        self.series_results = series_results
+        self.media_info = media_info
+        options = [
+            discord.SelectOption(
+                label=series['title'],
+                value=str(idx),
+                description=str(series['year'])
+            )
+            for idx, series in enumerate(series_results)
+        ]
+        super().__init__(placeholder="Please select a TV series", options=options, min_values=1, max_values=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_series_index = int(self.values[0])
+        selected_series_data = self.series_results[selected_series_index]
+        seasons_results = await fetch_seasons(selected_series_data)
+        self.media_info['series'] = selected_series_data['title']
+        self.media_info['seriesId'] = selected_series_data['id']
+
+        # Add media_info parameter to callback method
+        await interaction.response.edit_message(content="Please select a season",  view=SeasonSelectorView(seasons_results, self.media_info))
+
+
 media_info = {}
 
 
@@ -190,18 +278,18 @@ async def request_movie(ctx, *, movie: str):
     await ctx.response.send_message("Select a movie to grab", view=MovieSelectorView(movie_results, media_info), ephemeral=True)
 
 
-# # Bot command to "grab" (search) for TV Show 
-# @bot.tree.command(name="Request_Series", description="Will search and download selected TV Series")
-# @app_commands.describe(series="What TV series should we grab?")
-# async def Grab_Series(ctx, *, series: str):
-#     # Fetch TV series matching the input series name
-#     series_results = await fetch_series(series)
-#     if not series_results:
-#         await ctx.response.send_message(f"No TV series matching the title: {series}")
-#         return
-#     media_info['what'] = 'series'
-#     media_info['delete'] = 'no'
-#     await ctx.response.send_message("Select a TV series to grab", view=SeriesSelectorView(series_results, media_info), ephemeral=True)
+# Bot command to "grab" (search) for TV Show 
+@bot.tree.command(name="Request_Series", description="Will search and download selected TV Series")
+@app_commands.describe(series="What TV series should we grab?")
+async def Grab_Series(ctx, *, series: str):
+    # Fetch TV series matching the input series name
+    series_results = await fetch_series(series)
+    if not series_results:
+        await ctx.response.send_message(f"No TV series matching the title: {series}")
+        return
+    media_info['what'] = 'series'
+    media_info['delete'] = 'no'
+    await ctx.response.send_message("Select a TV series to grab", view=SeriesSelectorView(series_results, media_info), ephemeral=True)
 
 
 bot.run(bot_token)
