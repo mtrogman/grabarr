@@ -242,11 +242,11 @@ class TVSeriesSelector(Select):
     async def callback(self, interaction: discord.Interaction):
         selected_series_index = int(self.values[0])
         selected_series_data = self.series_results[selected_series_index]
-        seasons_results = await fetch_seasons(selected_series_data)
+        self.media_info['seasonList'] = await fetch_seasons(selected_series_data)
         self.media_info['series'] = selected_series_data['title']
 
         # Add media_info parameter to callback method
-        await interaction.response.edit_message(content="Please select season(s) you wish to request",  view=SeasonSelectorView(seasons_results, self.media_info))
+        await interaction.response.edit_message(content="Please select season(s) you wish to request",  view=BaseSeasonSelectorView(self.media_info))
 
 
 # Call to get list of top 10 TV Series found that match the search and to put into Discord Dropdown
@@ -268,18 +268,24 @@ async def fetch_series(series_name):
         return []
 
 
+# Call to get list of seasons within the series and put into Discord Dropdown
+async def fetch_seasons(selected_series_data, ):
+    seasons = selected_series_data.get('seasons', [])
+    # Filter out season 0 which is extras
+    seasons = [season for season in seasons if season['seasonNumber'] != 0]
+    return seasons
+
+
 # View & Select required to build out TV Season Discord Dropdown.
-class SeasonSelectorView(View):
-    def __init__(self, season_results, media_info):
+class BaseSeasonSelectorView(View):
+    def __init__(self, media_info):
         super().__init__()
-        self.season_results = season_results
         self.media_info = media_info
-        self.add_item(SeasonSelector(season_results, media_info))
+        self.add_item(BaseSeasonSelector(media_info))
 
 
-class SeasonSelector(Select):
-    def __init__(self, seasons_results, media_info):
-        self.seasons_results = seasons_results
+class BaseSeasonSelector(Select):
+    def __init__(self, media_info):
         self.media_info = media_info
         options = [
             discord.SelectOption(label="Latest Season"),
@@ -287,28 +293,38 @@ class SeasonSelector(Select):
             discord.SelectOption(label="Choose which seasons")
         ]
         super().__init__(placeholder="What season(s) to request", options=options, min_values=1, max_values=1)
-
     async def callback(self, interaction: discord.Interaction):
         selected_season_index = self.values[0]
-        print(selected_season_index)
         if selected_season_index == "Latest Season":
-            print("you choose latest season")
+            media_info['seasonChoice'] = "latestSeason"
         elif selected_season_index == "All Seasons":
-            print("you choose all seasons")
+            media_info['seasonChoice'] = "allSeasons"
         else:
-            print("you choose other")
-        exit(0)
-        self.media_info['seasonNumber'] = self.seasons_results[selected_season_index]['seasonNumber']
-        episode_results = await fetch_episodes(media_info)
-        await interaction.response.edit_message(content="Please select an episode", view=EpisodeSelectorView(episode_results, self.media_info))
+            await interaction.response.edit_message(content="Please select a season", view=SeasonSelectorView(media_info))
 
-# Call to get list of seasons within the series and put into Discord Dropdown
-async def fetch_seasons(selected_series_data, ):
-    seasons = selected_series_data.get('seasons', [])
-    # Filter out season 0 which is extras
-    seasons = [season for season in seasons if season['seasonNumber'] != 0]
 
-    return seasons
+class SeasonSelectorView(View):
+    def __init__(self, media_info):
+        super().__init__()
+        self.add_item(SeasonSelector(media_info))
+
+
+class SeasonSelector(Select):
+    def __init__(self, media_info):
+        options = [
+            discord.SelectOption(
+                label=f"Season {int(season['seasonNumber'])}",
+                value=str(season['seasonNumber'])
+            )
+            for season in media_info['seasonList']
+        ]
+        super().__init__(placeholder="Please select season(s) you want to request", options=options, min_values=1, max_values=10)
+
+    # async def callback(self, interaction: discord.Interaction):
+    #     selected_season_index = int(self.values[0])
+    #     self.media_info['seasonNumber'] = self.seasons_results[selected_season_index]['seasonNumber']
+    #     episode_results = await fetch_episodes(media_info)
+    #     await interaction.response.edit_message(content="Please select an episode", view=EpisodeSelectorView(episode_results, self.media_info))
 
 media_info = {}
 
