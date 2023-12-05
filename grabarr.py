@@ -8,6 +8,7 @@ import requests
 import json
 import yaml
 import logging
+import asyncio
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -102,7 +103,7 @@ class ConfirmButtonsSeries(View):
     def __init__(self, interaction, media_info):
         super().__init__()
         regrab_button = Button(style=discord.ButtonStyle.primary, label="Request")
-        regrab_button.callback = self.regrab_callback
+        regrab_button.callback = self.grab_callback
         self.add_item(regrab_button)
 
         cancel_button = Button(style=discord.ButtonStyle.danger, label="Cancel")
@@ -113,40 +114,28 @@ class ConfirmButtonsSeries(View):
         self.media_info = media_info
 
     async def grab_callback(self, button):
-        # Checks if episodeFileId is 0 and if it is doesn't delete it since it's not there.
-        if media_info['episodeFileId'] != 0:
-            # Delete the show
-            delete_url = f"{sonarr_base_url}/episodefile/{media_info['episodeFileId']}?apikey={sonarr_api_key}"
-            try:
-                delete_response = requests.delete(delete_url)
-                delete_response.raise_for_status()  # Raise an exception for non-200 responses
-                logging.info(f"Deleted EpisodeFileID {media_info['episodeFileId']} with a response of {delete_response.status_code}")
-            except requests.exceptions.RequestException as e:
-                logging.error(f"Error deleting EpisodeFileID {media_info['episodeFileId']}: {e}")
-        else:
-            logging.info(f"No Episode Found")
+        # Add the series (and search for it)
+        add_url = f"{sonarr_base_url}/series"
+        for season in media_info["seasonList"]:
+            season["monitored"] = str(season["seasonNumber"]) in media_info["selectedSeasons"]
+        data = {
+                "tvdbId":  self.media_info["tvdbId"],
+                "title":  self.media_info["series"],
+                "qualityProfileId":  1,
+                "titleSlug":  self.media_info['titleSlug'],
+                "rootFolderPath": "/tv",
+                "languageProfileId": 1,
+                "monitored": True,
+                "seasons":  self.media_info["seasonList"]
+            }
 
-        # Search for the episode
-        search_url = f"{sonarr_base_url}/command/"
         headers = {
-            "Content-Type": "application/json",
             "X-Api-Key": sonarr_api_key
         }
-        data = {
-            "episodeIds": [media_info['episodeId']],
-            "name": "EpisodeSearch",
-        }
-
-        try:
-            search_response = requests.post(search_url, headers=headers, json=data)
-            search_response.raise_for_status()  # Raise an exception for non-200 responses
-            logging.info(f"Searching for EpisodeID {media_info['episodeNumber']} with a response of {search_response.status_code}")
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Error searching for EpisodeID {media_info['episodeId']}: {e}")
-
-        await self.interaction.delete_original_response()
-        await self.interaction.followup.send(content=f"`{self.interaction.user.name} your request to (re)grab {media_info['series']}` Season {media_info['seasonNumber']}) Episode {media_info['episodeNumber']} is being processed.")
-
+        # add_response = perform_request('POST', add_url, data, headers)
+        title = self.media_info["series"]
+        add_response = perform_request('POST', add_url, data, headers)
+        logging.info(f"Added {title} with a response of {add_response}")
     # Cancel just responds with msg
     async def cancel_callback(self, button):
         await self.interaction.delete_original_response()
@@ -244,6 +233,8 @@ class TVSeriesSelector(Select):
         selected_series_data = self.series_results[selected_series_index]
         self.media_info['seasonList'] = await fetch_seasons(selected_series_data)
         self.media_info['series'] = selected_series_data['title']
+        self.media_info['titleSlug'] = selected_series_data['titleSlug']
+        self.media_info['tvdbId'] = selected_series_data['tvdbId']
 
         # Add media_info parameter to callback method
         await interaction.response.edit_message(content="Please select season(s) you wish to request",  view=BaseSeasonSelectorView(self.media_info))
@@ -320,16 +311,21 @@ class SeasonSelector(Select):
             for season in media_info['seasonList'][::-1][:max_options]
         ]
         if len(media_info['seasonList']) > 25:
-            print("Has more than 25 seasons")
             maxValue = 25
         else:
-            print("Has less than 25 seasons")
             maxValue = len(media_info['seasonList'])
         super().__init__(placeholder="Please select season(s) you want to request", options=options, min_values=1,max_values=maxValue)
     async def callback(self, interaction: discord.Interaction):
         media_info['selectedSeasons'] = self.values
-        print(media_info['selectedSeasons'])
+        # Construct the confirmation message with episode details
+        confirmation_message = (
+            f"Please confirm that you would like to request the following:\n"
+            f"**Series:** {media_info['series']}\n"
+            f"**Season:** Season(s) {media_info['selectedSeasons']}\n"
+        )
 
+        confirmation_view = ConfirmButtonsSeries(interaction, media_info)
+        await interaction.response.edit_message(content=confirmation_message, view=confirmation_view)
 
 media_info = {}
 
