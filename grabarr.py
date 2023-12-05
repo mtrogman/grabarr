@@ -311,20 +311,25 @@ class SeasonSelectorView(View):
 
 class SeasonSelector(Select):
     def __init__(self, media_info):
+        max_options = 25
         options = [
             discord.SelectOption(
                 label=f"Season {int(season['seasonNumber'])}",
                 value=str(season['seasonNumber'])
             )
-            for season in media_info['seasonList']
+            for season in media_info['seasonList'][::-1][:max_options]
         ]
-        super().__init__(placeholder="Please select season(s) you want to request", options=options, min_values=1, max_values=10)
+        if len(media_info['seasonList']) > 25:
+            print("Has more than 25 seasons")
+            maxValue = 25
+        else:
+            print("Has less than 25 seasons")
+            maxValue = len(media_info['seasonList'])
+        super().__init__(placeholder="Please select season(s) you want to request", options=options, min_values=1,max_values=maxValue)
+    async def callback(self, interaction: discord.Interaction):
+        media_info['selectedSeasons'] = self.values
+        print(media_info['selectedSeasons'])
 
-    # async def callback(self, interaction: discord.Interaction):
-    #     selected_season_index = int(self.values[0])
-    #     self.media_info['seasonNumber'] = self.seasons_results[selected_season_index]['seasonNumber']
-    #     episode_results = await fetch_episodes(media_info)
-    #     await interaction.response.edit_message(content="Please select an episode", view=EpisodeSelectorView(episode_results, self.media_info))
 
 media_info = {}
 
