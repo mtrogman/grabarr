@@ -8,6 +8,7 @@ import requests
 import json
 import yaml
 import logging
+import asyncio
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -68,7 +69,8 @@ class ConfirmButtonsMovie(View):
         movie_tmdb = self.media_info['tmdbId']
 
         if self.media_info['folderName']:
-            await self.interaction.followup.send(content=f"`{self.interaction.user.name} your request to request {movie_title}` ({movie_year}) was not processed because this movie has already been requested.")
+            await self.interaction.delete_original_response()
+            await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request to request {movie_title} ({movie_year}) was not processed because this movie has already been requested.")
         else:
             # Add the movie back (and search for it)
             add_url = f"{radarr_base_url}/movie?apikey={radarr_api_key}"
@@ -90,13 +92,71 @@ class ConfirmButtonsMovie(View):
             logging.info(f"Added {movie_title} with a response of {add_response}")
 
             # Respond to discord
-            await self.interaction.followup.send(content=f"`{self.interaction.user.name} your request to delete and redownload {movie_title}` ({movie_year}) is being processed.")
+            await self.interaction.delete_original_response()
+            if 200 <= add_response.status_code < 400:
+                await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request for {movie_title} ({movie_year}) is being processed.")
+            else:
+                await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request of {movie_title} ({movie_year}) had an issue, please contact the admin")
 
     # Cancel just responds with msg
     async def cancel_callback(self, button):
         await self.interaction.delete_original_response()
         await self.interaction.followup.send(content="Cancelled the request.", ephemeral=True)
 
+
+class ConfirmButtonsSeries(View):
+    def __init__(self, interaction, media_info):
+        super().__init__()
+        regrab_button = Button(style=discord.ButtonStyle.primary, label="Request")
+        regrab_button.callback = self.grab_callback
+        self.add_item(regrab_button)
+
+        cancel_button = Button(style=discord.ButtonStyle.danger, label="Cancel")
+        cancel_button.callback = self.cancel_callback
+        self.add_item(cancel_button)
+
+        self.interaction = interaction
+        self.media_info = media_info
+
+    async def grab_callback(self, button):
+        tvSeriesTitle = self.media_info["series"]
+        tvSeriesYear = self.media_info["year"]
+        if 'path' in media_info:
+            await self.interaction.delete_original_response()
+            await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request to request {tvSeriesTitle} ({tvSeriesYear}) was not processed because this series has already been requested.")
+        else:
+            # Add the series (and search for it)
+            add_url = f"{sonarr_base_url}/series"
+
+            for season in media_info["seasonList"]:
+                season["monitored"] = str(season["seasonNumber"]) in media_info["selectedSeasons"]
+            dataSeasons = self.media_info["seasonList"]
+            data = {
+                    "tvdbId":  self.media_info["tvdbId"],
+                    "title":  self.media_info["series"],
+                    "qualityProfileId":  1,
+                    "titleSlug":  self.media_info['titleSlug'],
+                    "rootFolderPath": "/tv",
+                    "languageProfileId": 1,
+                    "monitored": True,
+                    "seasons":  dataSeasons
+                }
+            headers = {
+                "X-Api-Key": sonarr_api_key
+            }
+            title = self.media_info["series"]
+            add_response = perform_request('POST', add_url, data, headers)
+            await self.interaction.delete_original_response()
+            if 200 <= add_response.status_code < 400:
+                await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request of {tvSeriesTitle} ({tvSeriesYear}) is being processed")
+            else:
+                await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request of {tvSeriesTitle} ({tvSeriesYear}) had an issue, please contact the admin")
+            logging.info(f"Added {title} with a response of {add_response}")
+
+    # Cancel just responds with msg
+    async def cancel_callback(self, button):
+        await self.interaction.delete_original_response()
+        await self.interaction.followup.send(content="Cancelled the request.", ephemeral=True)
 
 # View & Select required to build out Discord Dropdown.
 class MovieSelectorView(View):
@@ -137,10 +197,8 @@ class MovieSelector(Select):
 
         confirmation_view = ConfirmButtonsMovie(interaction, selected_movie_data)
 
-        await interaction.response.edit_message(
-            content=confirmation_message,
-            view=confirmation_view
-        )
+        await interaction.response.edit_message(content=confirmation_message,view=confirmation_view)
+
 
 
 # Call to get list of top 10 Movies found that match the search and to put into Discord Dropdown
@@ -160,6 +218,147 @@ async def fetch_movie(movie_name):
     except requests.exceptions.RequestException as e:
         logging.error(f"Error fetching movie data: {e}")
         return []
+
+
+# View & Select required to build out TV Series Discord Dropdown.
+class SeriesSelectorView(View):
+    def __init__(self, series_results, media_info):
+        super().__init__()
+        self.series_results = series_results
+        self.media_info = media_info
+        self.add_item(TVSeriesSelector(series_results, media_info))
+
+
+class TVSeriesSelector(Select):
+    def __init__(self, series_results, media_info):
+        self.series_results = series_results
+        self.media_info = media_info
+        options = [
+            discord.SelectOption(
+                label=series['title'],
+                value=str(idx),
+                description=str(series['year'])
+            )
+            for idx, series in enumerate(series_results)
+        ]
+        super().__init__(placeholder="Please select a TV series", options=options, min_values=1, max_values=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_series_index = int(self.values[0])
+        selected_series_data = self.series_results[selected_series_index]
+        self.media_info['seasonList'] = await fetch_seasons(selected_series_data)
+        self.media_info['series'] = selected_series_data['title']
+        self.media_info['titleSlug'] = selected_series_data['titleSlug']
+        self.media_info['tvdbId'] = selected_series_data['tvdbId']
+        self.media_info['year'] = selected_series_data['year']
+        if 'path' in selected_series_data:
+            self.media_info['path'] = selected_series_data['path']
+
+
+        # Add media_info parameter to callback method
+        await interaction.response.edit_message(content="Please select season(s) you wish to request",  view=BaseSeasonSelectorView(self.media_info))
+
+
+# Call to get list of top 10 TV Series found that match the search and to put into Discord Dropdown
+async def fetch_series(series_name):
+    url = f"{sonarr_base_url}/series/lookup?term={series_name}"
+    headers = {"X-Api-Key": sonarr_api_key}
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  # Raise an exception for non-200 responses
+
+        if response.status_code == 200:
+            series_list = response.json()
+            return series_list[:10]  # Return the first 10 series
+        else:
+            return []
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error fetching series data: {e}")
+        return []
+
+
+# Call to get list of seasons within the series and put into Discord Dropdown
+async def fetch_seasons(selected_series_data, ):
+    seasons = selected_series_data.get('seasons', [])
+    # Filter out season 0 which is extras
+    seasons = [season for season in seasons if season['seasonNumber'] != 0]
+    return seasons
+
+
+# View & Select required to build out TV Season Discord Dropdown.
+class BaseSeasonSelectorView(View):
+    def __init__(self, media_info):
+        super().__init__()
+        self.media_info = media_info
+        self.add_item(BaseSeasonSelector(media_info))
+
+
+class BaseSeasonSelector(Select):
+    def __init__(self, media_info):
+        self.media_info = media_info
+        options = [
+            discord.SelectOption(label="Latest Season"),
+            discord.SelectOption(label="All Seasons"),
+            discord.SelectOption(label="Choose which seasons")
+        ]
+        super().__init__(placeholder="What season(s) to request", options=options, min_values=1, max_values=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_season_index = self.values[0]
+
+        if selected_season_index == "Choose which seasons":
+            await interaction.response.edit_message(content="Please select a season",view=SeasonSelectorView(media_info))
+        else:
+            if selected_season_index == "Latest Season":
+                media_info['selectedSeasons'] = [str(media_info['seasonList'][-1]['seasonNumber'])]
+            else:
+                media_info['selectedSeasons'] = [str(season['seasonNumber']) for season in media_info['seasonList']]
+
+            confirmation_message = (
+                f"Please confirm that you would like to request the following:\n"
+                f"**Series:** {media_info['series']}\n"
+                f"**Season:** {selected_season_index}\n"
+            )
+            confirmation_view = ConfirmButtonsSeries(interaction, media_info)
+            await interaction.response.edit_message(content=confirmation_message, view=confirmation_view)
+
+
+
+class SeasonSelectorView(View):
+    def __init__(self, media_info):
+        super().__init__()
+        self.add_item(SeasonSelector(media_info))
+
+
+class SeasonSelector(Select):
+    def __init__(self, media_info):
+        max_options = 25
+        options = [
+            discord.SelectOption(
+                label=f"Season {int(season['seasonNumber'])}",
+                value=str(season['seasonNumber'])
+            )
+            for season in media_info['seasonList'][::-1][:max_options]
+        ]
+        if len(media_info['seasonList']) > 25:
+            maxValue = 25
+        else:
+            maxValue = len(media_info['seasonList'])
+        super().__init__(placeholder="Please select season(s) you want to request", options=options, min_values=1,max_values=maxValue)
+
+    async def callback(self, interaction: discord.Interaction):
+        media_info['selectedSeasons'] = self.values
+        # Construct the confirmation message with series details
+        confirmation_message = (
+            f"Please confirm that you would like to request the following:\n"
+            f"**Series:** {media_info['series']}\n"
+            f"**Season:** Season(s) {media_info['selectedSeasons']}\n"
+        )
+
+        confirmation_view = ConfirmButtonsSeries(interaction, media_info)
+        await interaction.response.edit_message(content=confirmation_message, view=confirmation_view)
+
 
 
 media_info = {}
@@ -190,18 +389,18 @@ async def request_movie(ctx, *, movie: str):
     await ctx.response.send_message("Select a movie to grab", view=MovieSelectorView(movie_results, media_info), ephemeral=True)
 
 
-# # Bot command to "grab" (search) for TV Show 
-# @bot.tree.command(name="Request_Series", description="Will search and download selected TV Series")
-# @app_commands.describe(series="What TV series should we grab?")
-# async def Grab_Series(ctx, *, series: str):
-#     # Fetch TV series matching the input series name
-#     series_results = await fetch_series(series)
-#     if not series_results:
-#         await ctx.response.send_message(f"No TV series matching the title: {series}")
-#         return
-#     media_info['what'] = 'series'
-#     media_info['delete'] = 'no'
-#     await ctx.response.send_message("Select a TV series to grab", view=SeriesSelectorView(series_results, media_info), ephemeral=True)
+# Bot command to "grab" (search) for TV Show
+@bot.tree.command(name="request_series", description="Will search and download selected TV Series")
+@app_commands.describe(series="What TV series should we grab?")
+async def request_series(ctx, *, series: str):
+    # Fetch TV series matching the input series name
+    series_results = await fetch_series(series)
+    if not series_results:
+        await ctx.response.send_message(f"No TV series matching the title: {series}")
+        return
+    media_info['what'] = 'series'
+    media_info['delete'] = 'no'
+    await ctx.response.send_message("Select a TV series to grab", view=SeriesSelectorView(series_results, media_info), ephemeral=True)
 
 
 bot.run(bot_token)
