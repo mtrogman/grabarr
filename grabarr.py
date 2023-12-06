@@ -116,8 +116,10 @@ class ConfirmButtonsSeries(View):
     async def grab_callback(self, button):
         # Add the series (and search for it)
         add_url = f"{sonarr_base_url}/series"
+
         for season in media_info["seasonList"]:
             season["monitored"] = str(season["seasonNumber"]) in media_info["selectedSeasons"]
+        dataSeasons = self.media_info["seasonList"]
         data = {
                 "tvdbId":  self.media_info["tvdbId"],
                 "title":  self.media_info["series"],
@@ -126,9 +128,8 @@ class ConfirmButtonsSeries(View):
                 "rootFolderPath": "/tv",
                 "languageProfileId": 1,
                 "monitored": True,
-                "seasons":  self.media_info["seasonList"]
+                "seasons":  dataSeasons
             }
-
         headers = {
             "X-Api-Key": sonarr_api_key
         }
@@ -284,14 +285,27 @@ class BaseSeasonSelector(Select):
             discord.SelectOption(label="Choose which seasons")
         ]
         super().__init__(placeholder="What season(s) to request", options=options, min_values=1, max_values=1)
+
     async def callback(self, interaction: discord.Interaction):
         selected_season_index = self.values[0]
-        if selected_season_index == "Latest Season":
-            media_info['seasonChoice'] = "latestSeason"
-        elif selected_season_index == "All Seasons":
-            media_info['seasonChoice'] = "allSeasons"
+
+        if selected_season_index == "Choose which seasons":
+            await interaction.response.edit_message(content="Please select a season",view=SeasonSelectorView(media_info))
         else:
-            await interaction.response.edit_message(content="Please select a season", view=SeasonSelectorView(media_info))
+            if selected_season_index == "Latest Season":
+                media_info['selectedSeasons'] = [str(media_info['seasonList'][-1]['seasonNumber'])]
+            else:
+                media_info['selectedSeasons'] = [str(season['seasonNumber']) for season in media_info['seasonList']]
+
+            confirmation_message = (
+                f"Please confirm that you would like to request the following:\n"
+                f"**Series:** {media_info['series']}\n"
+                f"**Season:** {selected_season_index}\n"
+            )
+
+            confirmation_view = ConfirmButtonsSeries(interaction, media_info)
+            await interaction.response.edit_message(content=confirmation_message, view=confirmation_view)
+
 
 
 class SeasonSelectorView(View):
@@ -315,9 +329,10 @@ class SeasonSelector(Select):
         else:
             maxValue = len(media_info['seasonList'])
         super().__init__(placeholder="Please select season(s) you want to request", options=options, min_values=1,max_values=maxValue)
+
     async def callback(self, interaction: discord.Interaction):
         media_info['selectedSeasons'] = self.values
-        # Construct the confirmation message with episode details
+        # Construct the confirmation message with series details
         confirmation_message = (
             f"Please confirm that you would like to request the following:\n"
             f"**Series:** {media_info['series']}\n"
