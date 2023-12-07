@@ -1,3 +1,18 @@
+<div align="center">
+
+# grabarr
+
+A Discord bot to delete and (re)search for media
+
+[![Release](https://img.shields.io/github/v/release/mtrogman/grabarr?color=yellow&include_prereleases&label=version&style=flat-square)](https://github.com/mtrogman/grabarr/releases)
+[![Docker](https://img.shields.io/docker/pulls/mtrogman/grabarr?style=flat-square)](https://hub.docker.com/r/mtrogman/grabarr)
+[![Licence](https://img.shields.io/github/license/mtrogman/grabarr?style=flat-square)](https://opensource.org/licenses/GPL-3.0)
+
+
+<img src="https://raw.githubusercontent.com/mtrogman/grabarr/master/logo.png" alt="logo">
+
+</div>
+
 # Features
 
 grabbar uses discord and Sonarr/Radarr to allow discord users to 'grab' content.  
