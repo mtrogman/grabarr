@@ -67,9 +67,9 @@ class ConfirmButtonsMovie(View):
         movie_title = self.media_info['title']
         movie_year = self.media_info['year']
         movie_tmdb = self.media_info['tmdbId']
+        await self.interaction.delete_original_response()
 
         if self.media_info['folderName']:
-            await self.interaction.delete_original_response()
             await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request to request {movie_title} ({movie_year}) was not processed because this movie has already been requested.")
         else:
             # Add the movie back (and search for it)
@@ -92,7 +92,6 @@ class ConfirmButtonsMovie(View):
             logging.info(f"Added {movie_title} with a response of {add_response}")
 
             # Respond to discord
-            await self.interaction.delete_original_response()
             if 200 <= add_response.status_code < 400:
                 await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request for {movie_title} ({movie_year}) is being processed.")
             else:
