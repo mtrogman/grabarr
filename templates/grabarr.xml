@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
-    <Name>regrabarr</Name>
-    <Repository>mtrogman/regrabarr:latest</Repository>
+    <Name>grabarr</Name>
+    <Repository>mtrogman/grabarr:latest</Repository>
     <Registry>https://hub.docker.com/r/mtrogman/grabarr</Registry>
     <Branch>
         <Tag>latest</Tag>
