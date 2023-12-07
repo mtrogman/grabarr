@@ -13,7 +13,8 @@
     <Support>https://discord.gg/jZWZh5CS6c</Support>
     <Project>https://github.com/mtrogman/grabarr</Project>
     <Overview>Grabarr is a Discord bot that allows end users to 'grab' (Search and download) media.</Overview>
-    <Category>Tools: MediaServer Status:Beta</Category>
+    <Category>Tools: MediaServer Status:Stable</Category>
+    <Icon>https://raw.githubusercontent.com/mtrogman/grabarr/master/logo.png</Icon>
     <TemplateURL>https://raw.githubusercontent.com/mtrogman/unraid_templates/main/templates/grabarr.xml</TemplateURL>
     <Maintainer>
         <WebPage>https://github.com/mtrogman</WebPage>
