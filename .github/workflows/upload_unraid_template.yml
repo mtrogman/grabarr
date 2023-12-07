@@ -30,7 +30,7 @@ jobs:
           source_folder: 'templates'
           destination_repo: 'mtrogman/unraid_templates'
           destination_base_branch: 'main'
-          destination_head_branch: regrabarr-${{ steps.vars.outputs.version }}
+          destination_head_branch: grabarr-${{ steps.vars.outputs.version }}
           user_email: 'mtrogman@users.noreply.github.com'
           user_name: 'mtrogman'
           pull_request_assignees: 'mtrogman'
