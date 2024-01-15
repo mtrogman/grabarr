@@ -70,7 +70,8 @@ class ConfirmButtonsMovie(View):
         await self.interaction.delete_original_response()
 
         if self.media_info['folderName']:
-            await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request to request {movie_title} ({movie_year}) was not processed because this movie has already been requested.")
+            await self.interaction.followup.send(content=f"`{self.interaction.user.name}` {movie_title} ({movie_year}) was not processed because this movie has already been requested.")
+            logging.warning(f"{self.interaction.user.name}` your request to request {movie_title} ({movie_year}) was not processed because this movie has already been requested.")
         else:
             # Add the movie back (and search for it)
             add_url = f"{radarr_base_url}/movie?apikey={radarr_api_key}"
@@ -94,8 +95,10 @@ class ConfirmButtonsMovie(View):
             # Respond to discord
             if 200 <= add_response.status_code < 400:
                 await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request for {movie_title} ({movie_year}) is being processed.")
+                logging.info(f"{self.interaction.user.name}` your request for {movie_title} ({movie_year}) is being processed.")
             else:
                 await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request of {movie_title} ({movie_year}) had an issue, please contact the admin")
+                logging.error(f"{self.interaction.user.name}` your request of {movie_title} ({movie_year}) had an issue, please contact the admin")
 
     # Cancel just responds with msg
     async def cancel_callback(self, button):
@@ -120,37 +123,57 @@ class ConfirmButtonsSeries(View):
     async def grab_callback(self, button):
         tvSeriesTitle = self.media_info["series"]
         tvSeriesYear = self.media_info["year"]
+        # Delete Series before re-requesting it
+        # The method of fixing monitoring of series, season, episode was a pain... easier to just dust off and nuke from orbit without purging any media
+        seriesExisted = False
+        # Validation if files exist
         if 'path' in media_info:
-            await self.interaction.delete_original_response()
-            await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request to request {tvSeriesTitle} ({tvSeriesYear}) was not processed because this series has already been requested.")
-        else:
-            # Add the series (and search for it)
-            add_url = f"{sonarr_base_url}/series"
+            # Validation if show exists on sonarr
+            if 'id' in media_info:
+                seriesId = media_info['id']
+                del_url = f"{sonarr_base_url}/series/{seriesId}?deleteFiles=false&addImportListExclusion=false&apikey={sonarr_api_key}"
+                del_response = perform_request('DELETE', del_url)
+                if 200 <= del_response.status_code < 400:
+                    seriesExisted = True
+                    logging.warning(f"{self.interaction.user.name}`  {tvSeriesTitle} ({tvSeriesYear}) had existed, resetting and searching for media again.")
+                else:
+                    await self.interaction.followup.send(content=f"`{self.interaction.user.name}` the preperation to request {tvSeriesTitle} ({tvSeriesYear}) had an issue, please contact the admin")
+                    logging.error(f"{self.interaction.user.name}` the preperation to request {tvSeriesTitle} ({tvSeriesYear}) had an issue, please contact the admin")
 
-            for season in media_info["seasonList"]:
-                season["monitored"] = str(season["seasonNumber"]) in media_info["selectedSeasons"]
-            dataSeasons = self.media_info["seasonList"]
-            data = {
-                    "tvdbId":  self.media_info["tvdbId"],
-                    "title":  self.media_info["series"],
-                    "qualityProfileId":  1,
-                    "titleSlug":  self.media_info['titleSlug'],
-                    "rootFolderPath": "/tv",
-                    "languageProfileId": 1,
-                    "monitored": True,
-                    "seasons":  dataSeasons
+        # Add the series (and search for it)
+        add_url = f"{sonarr_base_url}/series"
+
+        data = {
+                "tvdbId":  self.media_info["tvdbId"],
+                "title":  self.media_info["series"],
+                "qualityProfileId":  1,
+                "titleSlug":  self.media_info['titleSlug'],
+                "rootFolderPath": "/tv",
+                "languageProfileId": 1,
+                "monitored": True,
+                "addOptions": {
+                    "monitor": self.media_info['selectedSeasons'],
+                    "searchForMissingEpisodes": True,
+                    "searchForCutoffUnmetEpisodes": False
                 }
-            headers = {
-                "X-Api-Key": sonarr_api_key
             }
-            title = self.media_info["series"]
-            add_response = perform_request('POST', add_url, data, headers)
-            await self.interaction.delete_original_response()
-            if 200 <= add_response.status_code < 400:
-                await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request of {tvSeriesTitle} ({tvSeriesYear}) is being processed")
+        headers = {
+            "X-Api-Key": sonarr_api_key
+        }
+        title = self.media_info["series"]
+        add_response = perform_request('POST', add_url, data, headers)
+        await self.interaction.delete_original_response()
+        if 200 <= add_response.status_code < 400:
+            if seriesExisted:
+                await self.interaction.followup.send(content=f"`{self.interaction.user.name}`  {tvSeriesTitle} ({tvSeriesYear}) had existed, resetting and searching for media again.")
+                logging.info(f"{self.interaction.user.name}`  {tvSeriesTitle} ({tvSeriesYear}) had existed, resetting and searching for media again.")
             else:
-                await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request of {tvSeriesTitle} ({tvSeriesYear}) had an issue, please contact the admin")
-            logging.info(f"Added {title} with a response of {add_response}")
+                await self.interaction.followup.send(content=f"`{self.interaction.user.name}`  {tvSeriesTitle} ({tvSeriesYear}) is being processed.")
+                logging.info(f"{self.interaction.user.name}` your request of {tvSeriesTitle} ({tvSeriesYear}) is being processed")
+        else:
+            await self.interaction.followup.send(content=f"`{self.interaction.user.name}` your request of {tvSeriesTitle} ({tvSeriesYear}) had an issue, please contact the admin")
+            logging.error(f"{self.interaction.user.name}` your request of {tvSeriesTitle} ({tvSeriesYear}) had an issue, please contact the admin")
+        logging.info(f"Added {title} with a response of {add_response}")
 
     # Cancel just responds with msg
     async def cancel_callback(self, button):
@@ -252,6 +275,8 @@ class TVSeriesSelector(Select):
         self.media_info['year'] = selected_series_data['year']
         if 'path' in selected_series_data:
             self.media_info['path'] = selected_series_data['path']
+        if 'id' in selected_series_data:
+            self.media_info['id'] = selected_series_data['id']
 
 
         # Add media_info parameter to callback method
@@ -298,66 +323,27 @@ class BaseSeasonSelector(Select):
         self.media_info = media_info
         options = [
             discord.SelectOption(label="Latest Season"),
-            discord.SelectOption(label="All Seasons"),
-            discord.SelectOption(label="Choose which seasons")
+            discord.SelectOption(label="First Season"),
+            discord.SelectOption(label="All Seasons")
         ]
         super().__init__(placeholder="What season(s) to request", options=options, min_values=1, max_values=1)
 
     async def callback(self, interaction: discord.Interaction):
         selected_season_index = self.values[0]
-
-        if selected_season_index == "Choose which seasons":
-            await interaction.response.edit_message(content="Please select a season",view=SeasonSelectorView(media_info))
+        if selected_season_index == "Latest Season":
+            media_info['selectedSeasons'] = "lastSeason"
+        elif selected_season_index == "First Season":
+            media_info['selectedSeasons'] = "firstSeason"
         else:
-            if selected_season_index == "Latest Season":
-                media_info['selectedSeasons'] = [str(media_info['seasonList'][-1]['seasonNumber'])]
-            else:
-                media_info['selectedSeasons'] = [str(season['seasonNumber']) for season in media_info['seasonList']]
+            media_info['selectedSeasons'] = "all"
 
-            confirmation_message = (
-                f"Please confirm that you would like to request the following:\n"
-                f"**Series:** {media_info['series']}\n"
-                f"**Season:** {selected_season_index}\n"
-            )
-            confirmation_view = ConfirmButtonsSeries(interaction, media_info)
-            await interaction.response.edit_message(content=confirmation_message, view=confirmation_view)
-
-
-
-class SeasonSelectorView(View):
-    def __init__(self, media_info):
-        super().__init__()
-        self.add_item(SeasonSelector(media_info))
-
-
-class SeasonSelector(Select):
-    def __init__(self, media_info):
-        max_options = 25
-        options = [
-            discord.SelectOption(
-                label=f"Season {int(season['seasonNumber'])}",
-                value=str(season['seasonNumber'])
-            )
-            for season in media_info['seasonList'][::-1][:max_options]
-        ]
-        if len(media_info['seasonList']) > 25:
-            maxValue = 25
-        else:
-            maxValue = len(media_info['seasonList'])
-        super().__init__(placeholder="Please select season(s) you want to request", options=options, min_values=1,max_values=maxValue)
-
-    async def callback(self, interaction: discord.Interaction):
-        media_info['selectedSeasons'] = self.values
-        # Construct the confirmation message with series details
         confirmation_message = (
             f"Please confirm that you would like to request the following:\n"
             f"**Series:** {media_info['series']}\n"
-            f"**Season:** Season(s) {media_info['selectedSeasons']}\n"
+            f"**Season:** {selected_season_index}\n"
         )
-
         confirmation_view = ConfirmButtonsSeries(interaction, media_info)
         await interaction.response.edit_message(content=confirmation_message, view=confirmation_view)
-
 
 
 media_info = {}
