@@ -29,6 +29,41 @@ sonarr_api_key = config['sonarr']['api_key']
 sonarr_base_url = config['sonarr']['url']
 
 
+# Function to get root folders
+def get_root_folders(base_url, api_key):
+    url = f"{base_url}/api/v3/rootfolder"
+    headers = {
+        'X-Api-Key': api_key
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"Failed to get root folders: {response.status_code}")
+
+# Function to select the first root folder
+def select_root_folder(root_folders):
+    if root_folders:
+        return root_folders[0]['path']
+    else:
+        raise Exception("No root folders available")
+
+# Fetch and select root folder paths
+try:
+    sonarr_root_folders = get_root_folders(sonarr_base_url, sonarr_api_key)
+    radarr_root_folders = get_root_folders(radarr_base_url, radarr_api_key)
+    
+    sonarr_root_folder_path = select_root_folder(sonarr_root_folders)
+    radarr_root_folder_path = select_root_folder(radarr_root_folders)
+    
+    print("Selected Sonarr Root Folder Path:", sonarr_root_folder_path)
+    print("Selected Radarr Root Folder Path:", radarr_root_folder_path)
+
+except Exception as e:
+    print(f"Error: {e}")
+    sys.exit(1)
+
+
 # Replace async with synchronous requests
 def perform_request(method, url, data=None, headers=None):
     try:
@@ -83,7 +118,7 @@ class ConfirmButtonsMovie(View):
                 "addOptions": {
                     "searchForMovie": True
                 },
-                "rootFolderPath": "/movies",
+                "rootFolderPath": radarr_root_folder_path,
                 "title": movie_title
             }
             headers = {
@@ -137,8 +172,8 @@ class ConfirmButtonsSeries(View):
                     seriesExisted = True
                     logging.warning(f"{self.interaction.user.name}`  {tvSeriesTitle} ({tvSeriesYear}) had existed, resetting and searching for media again.")
                 else:
-                    await self.interaction.followup.send(content=f"`{self.interaction.user.name}` the preperation to request {tvSeriesTitle} ({tvSeriesYear}) had an issue, please contact the admin")
-                    logging.error(f"{self.interaction.user.name}` the preperation to request {tvSeriesTitle} ({tvSeriesYear}) had an issue, please contact the admin")
+                    await self.interaction.followup.send(content=f"`{self.interaction.user.name}` the preparation to request {tvSeriesTitle} ({tvSeriesYear}) had an issue, please contact the admin")
+                    logging.error(f"{self.interaction.user.name}` the preparation to request {tvSeriesTitle} ({tvSeriesYear}) had an issue, please contact the admin")
 
         # Add the series (and search for it)
         add_url = f"{sonarr_base_url}/series"
@@ -148,7 +183,7 @@ class ConfirmButtonsSeries(View):
                 "title":  self.media_info["series"],
                 "qualityProfileId":  1,
                 "titleSlug":  self.media_info['titleSlug'],
-                "rootFolderPath": "/tv",
+                "rootFolderPath": sonarr_root_folder_path,
                 "languageProfileId": 1,
                 "monitored": True,
                 "addOptions": {
@@ -219,7 +254,7 @@ class MovieSelector(Select):
 
         confirmation_view = ConfirmButtonsMovie(interaction, selected_movie_data)
 
-        await interaction.response.edit_message(content=confirmation_message,view=confirmation_view)
+        await interaction.response.edit_message(content=confirmation_message, view=confirmation_view)
 
 
 
@@ -303,7 +338,7 @@ async def fetch_series(series_name):
 
 
 # Call to get list of seasons within the series and put into Discord Dropdown
-async def fetch_seasons(selected_series_data, ):
+async def fetch_seasons(selected_series_data):
     seasons = selected_series_data.get('seasons', [])
     # Filter out season 0 which is extras
     seasons = [season for season in seasons if season['seasonNumber'] != 0]
