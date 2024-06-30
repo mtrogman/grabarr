@@ -22,9 +22,9 @@ config_location = "/config/config.yml"
 config = get_config(config_location)
 bot_token = config['bot']['token']
 radarr_api_key = config['radarr']['api_key']
-radarr_base_url = config['radarr']['url']
+radarr_base_url = config['radarr']['url'].rstrip('/')
 sonarr_api_key = config['sonarr']['api_key']
-sonarr_base_url = config['sonarr']['url']
+sonarr_base_url = config['sonarr']['url'].rstrip('/')
 
 # Requests Session
 session = requests.Session()
@@ -133,9 +133,9 @@ class ConfirmButtonsSeries(View):
         self.interaction = interaction
         self.media_info = media_info
 
-        regrab_button = Button(style=discord.ButtonStyle.primary, label="Request")
-        regrab_button.callback = self.grab_callback
-        self.add_item(regrab_button)
+        grab_button = Button(style=discord.ButtonStyle.primary, label="Request")
+        grab_button.callback = self.grab_callback
+        self.add_item(grab_button)
 
         cancel_button = Button(style=discord.ButtonStyle.danger, label="Cancel")
         cancel_button.callback = self.cancel_callback
