@@ -9,7 +9,7 @@ A Discord bot to delete and (re)search for media
 [![Licence](https://img.shields.io/github/license/mtrogman/grabarr?style=flat-square)](https://opensource.org/licenses/GPL-3.0)
 
 
-<img src="https://raw.githubusercontent.com/mtrogman/grabarr/master/logo.png" alt="logo">
+<img src="https://raw.githubusercontent.com/mtrogman/grabarr/main/logo.png" alt="logo">
 
 </div>
 
