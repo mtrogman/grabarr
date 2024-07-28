@@ -26,6 +26,9 @@ radarr_base_url = config['radarr']['url'].rstrip('/')
 sonarr_api_key = config['sonarr']['api_key']
 sonarr_base_url = config['sonarr']['url'].rstrip('/')
 
+request_movie_command_name = config['bot'].get('request_movie', 'regrab_movie')
+request_series_command_name = config['bot'].get('request_series', 'regrab_series')
+
 # Requests Session
 session = requests.Session()
 
@@ -341,7 +344,7 @@ async def on_ready():
     except Exception as e:
         logging.error(f"{e}")
 
-@bot.tree.command(name="request_movie", description="Will search and download selected Movie")
+@bot.tree.command(name=request_movie_command_name, description="Will search and download selected Movie")
 @app_commands.describe(movie="What movie should we grab?")
 async def request_movie(ctx, *, movie: str):
     movie_results = await fetch_movie(movie)
@@ -353,7 +356,7 @@ async def request_movie(ctx, *, movie: str):
     media_info['delete'] = 'no'
     await ctx.response.send_message("Select a movie to grab", view=MovieSelectorView(movie_results, media_info), ephemeral=True)
 
-@bot.tree.command(name="request_series", description="Will search and download selected TV Series")
+@bot.tree.command(name=request_series_command_name, description="Will search and download selected TV Series")
 @app_commands.describe(series="What TV series should we grab?")
 async def request_series(ctx, *, series: str):
     series_results = await fetch_series(series)

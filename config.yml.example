@@ -1,5 +1,7 @@
 bot:
   token: PUT_DISCORD_BOT_TOKEN_HERE
+  request_movie: PUT_NAME_OF_REQUEST_MOVIE_APP_CONFIG_HERE
+  request_series: PUT_NAME_OF_REQUEST_SERIES_APP_CONFIG_HERE
 
 sonarr:
   api_key: PUT_SONARR_API_KEY_HERE
