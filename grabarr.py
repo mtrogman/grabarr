@@ -36,7 +36,6 @@ def get_root_folders(base_url, api_key):
     url = f"{base_url}/rootfolder?apikey={api_key}"
     try:
         response = session.get(url)
-        print(response)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -49,6 +48,20 @@ def select_root_folder(root_folders):
     else:
         raise Exception("No root folders available")
 
+def get_first_quality_profile(base_url, api_key):
+    url = f"{base_url}/qualityprofile?apikey={api_key}"
+    try:
+        response = session.get(url)
+        response.raise_for_status()
+        profiles = response.json()
+        if profiles:
+            return profiles[0]['id']
+        else:
+            raise Exception("No quality profiles available")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to get quality profiles: {e}")
+        return None
+
 try:
     sonarr_root_folders = get_root_folders(sonarr_base_url, sonarr_api_key)
     radarr_root_folders = get_root_folders(radarr_base_url, radarr_api_key)
@@ -56,8 +69,13 @@ try:
     sonarr_root_folder_path = select_root_folder(sonarr_root_folders)
     radarr_root_folder_path = select_root_folder(radarr_root_folders)
     
+    radarr_quality_profile_id = get_first_quality_profile(radarr_base_url, radarr_api_key)
+    sonarr_quality_profile_id = get_first_quality_profile(sonarr_base_url, sonarr_api_key)
+
     logging.info(f"Selected Sonarr Root Folder Path: {sonarr_root_folder_path}")
     logging.info(f"Selected Radarr Root Folder Path: {radarr_root_folder_path}")
+    logging.info(f"Selected Radarr Quality Profile ID: {radarr_quality_profile_id}")
+    logging.info(f"Selected Sonarr Quality Profile ID: {sonarr_quality_profile_id}")
 
 except Exception as e:
     logging.error(f"Error: {e}")
@@ -107,7 +125,7 @@ class ConfirmButtonsMovie(View):
             data = {
                 "tmdbId": movie_tmdb,
                 "monitored": True,
-                "qualityProfileId": 1,
+                "qualityProfileId": radarr_quality_profile_id,
                 "minimumAvailability": "released",
                 "addOptions": {
                     "searchForMovie": True
@@ -164,7 +182,7 @@ class ConfirmButtonsSeries(View):
         data = {
             "tvdbId": self.media_info["tvdbId"],
             "title": self.media_info["series"],
-            "qualityProfileId": 1,
+            "qualityProfileId": sonarr_quality_profile_id,
             "titleSlug": self.media_info['titleSlug'],
             "rootFolderPath": sonarr_root_folder_path,
             "languageProfileId": 1,
@@ -221,7 +239,7 @@ class MovieSelector(Select):
         self.media_info['title'] = selected_movie_data['title']
         self.media_info['year'] = selected_movie_data['year']
         self.media_info['overview'] = selected_movie_data['overview']
-        self.media_info['folderName'] = selected_movie_data['folderName']
+        self.media_info['folderName'] = selected_movie_data.get('folderName', None)
         confirmation_message = (
             f"Please confirm that you would like to grab the following movie:\n"
             f"**Title:** {self.media_info['title']}\n"
