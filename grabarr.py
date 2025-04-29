@@ -7,12 +7,17 @@ import requests
 import yaml
 import logging
 import asyncio
+import os
 
-# Configuration loading
+# Configuration loading and saving
 def get_config(file):
     with open(file, 'r') as yaml_file:
         config = yaml.safe_load(yaml_file)
     return config
+
+def save_config(file, config):
+    with open(file, 'w') as yaml_file:
+        yaml.safe_dump(config, yaml_file)
 
 # Initialize bot and logging
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
@@ -48,39 +53,107 @@ def select_root_folder(root_folders):
     else:
         raise Exception("No root folders available")
 
+def get_quality_profile_id(base_url, api_key, profile_name):
+    """Fetch the quality profile ID by name."""
+    url = f"{base_url}/qualityprofile?apikey={api_key}"
+    try:
+        response = session.get(url)
+        response.raise_for_status()
+        profiles = response.json()
+        for profile in profiles:
+            if profile['name'] == profile_name:
+                return profile['id']
+        raise Exception(f"Profile '{profile_name}' not found")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to get quality profiles: {e}")
+        return None
+
 def get_first_quality_profile(base_url, api_key):
+    """Fetch the first available quality profile."""
     url = f"{base_url}/qualityprofile?apikey={api_key}"
     try:
         response = session.get(url)
         response.raise_for_status()
         profiles = response.json()
         if profiles:
-            return profiles[0]['id']
+            return profiles[0]['id'], profiles[0]['name']
         else:
             raise Exception("No quality profiles available")
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to get quality profiles: {e}")
-        return None
+        return None, None
 
 try:
-    sonarr_root_folders = get_root_folders(sonarr_base_url, sonarr_api_key)
-    radarr_root_folders = get_root_folders(radarr_base_url, radarr_api_key)
-    
-    sonarr_root_folder_path = select_root_folder(sonarr_root_folders)
-    radarr_root_folder_path = select_root_folder(radarr_root_folders)
-    
-    radarr_quality_profile_id = get_first_quality_profile(radarr_base_url, radarr_api_key)
-    sonarr_quality_profile_id = get_first_quality_profile(sonarr_base_url, sonarr_api_key)
+    # Sonarr initialization
+    if 'profile' not in config['sonarr'] or not config['sonarr']['profile']:
+        logging.info("Sonarr profile not found in config. Fetching the first available profile...")
+        profile_id, profile_name = get_first_quality_profile(sonarr_base_url, sonarr_api_key)
+        if profile_id:
+            config['sonarr']['profile'] = profile_name
+            config['sonarr']['qualityprofileid'] = profile_id
+            save_config(config_location, config)
+            logging.info(f"Updated Sonarr profile in config: {profile_name} (ID: {profile_id})")
+        else:
+            logging.error("Failed to fetch Sonarr profile. Exiting...")
+            sys.exit(1)
+    else:
+        sonarr_quality_profile_id = config['sonarr']['qualityprofileid']
+        sonarr_root_folder_path = config['sonarr']['root_path']
+        logging.info(f"Loaded Sonarr profile from config: {config['sonarr']['profile']} (ID: {sonarr_quality_profile_id})")
+        logging.info(f"Loaded Sonarr root path from config: {sonarr_root_folder_path}")
 
-    logging.info(f"Selected Sonarr Root Folder Path: {sonarr_root_folder_path}")
-    logging.info(f"Selected Radarr Root Folder Path: {radarr_root_folder_path}")
-    logging.info(f"Selected Radarr Quality Profile ID: {radarr_quality_profile_id}")
-    logging.info(f"Selected Sonarr Quality Profile ID: {sonarr_quality_profile_id}")
+    if 'root_path' not in config['sonarr'] or not config['sonarr']['root_path']:
+        logging.info("Sonarr root path not found in config. Fetching the first available root folder...")
+        sonarr_root_folders = get_root_folders(sonarr_base_url, sonarr_api_key)
+        if sonarr_root_folders:
+            sonarr_root_folder_path = select_root_folder(sonarr_root_folders)
+            config['sonarr']['root_path'] = sonarr_root_folder_path
+            save_config(config_location, config)
+            logging.info(f"Updated Sonarr root path in config: {sonarr_root_folder_path}")
+        else:
+            logging.error("Failed to fetch Sonarr root folder. Exiting...")
+            sys.exit(1)
+
+    # Radarr initialization
+    if 'profile' not in config['radarr'] or not config['radarr']['profile']:
+        logging.info("Radarr profile not found in config. Fetching the first available profile...")
+        profile_id, profile_name = get_first_quality_profile(radarr_base_url, radarr_api_key)
+        if profile_id:
+            config['radarr']['profile'] = profile_name
+            config['radarr']['qualityprofileid'] = profile_id
+            save_config(config_location, config)
+            logging.info(f"Updated Radarr profile in config: {profile_name} (ID: {profile_id})")
+        else:
+            logging.error("Failed to fetch Radarr profile. Exiting...")
+            sys.exit(1)
+    else:
+        radarr_quality_profile_id = config['radarr']['qualityprofileid']
+        radarr_root_folder_path = config['radarr']['root_path']
+        logging.info(f"Loaded Radarr profile from config: {config['radarr']['profile']} (ID: {radarr_quality_profile_id})")
+        logging.info(f"Loaded Radarr root path from config: {radarr_root_folder_path}")
+
+    if 'root_path' not in config['radarr'] or not config['radarr']['root_path']:
+        logging.info("Radarr root path not found in config. Fetching the first available root folder...")
+        radarr_root_folders = get_root_folders(radarr_base_url, radarr_api_key)
+        if radarr_root_folders:
+            radarr_root_folder_path = select_root_folder(radarr_root_folders)
+            config['radarr']['root_path'] = radarr_root_folder_path
+            save_config(config_location, config)
+            logging.info(f"Updated Radarr root path in config: {radarr_root_folder_path}")
+        else:
+            logging.error("Failed to fetch Radarr root folder. Exiting...")
+            sys.exit(1)
+
+    # Use the fetched or loaded profile IDs and root paths in the rest of the script
+    logging.info(f"Using Sonarr Quality Profile ID: {sonarr_quality_profile_id}")
+    logging.info(f"Using Radarr Quality Profile ID: {radarr_quality_profile_id}")
+    logging.info(f"Using Sonarr Root Path: {sonarr_root_folder_path}")
+    logging.info(f"Using Radarr Root Path: {radarr_root_folder_path}")
 
 except Exception as e:
     logging.error(f"Error: {e}")
     sys.exit(1)
-
+    
 def perform_request(method, url, data=None, headers=None):
     try:
         if method == 'GET':
