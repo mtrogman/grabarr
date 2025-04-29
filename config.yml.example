@@ -6,7 +6,13 @@ bot:
 sonarr:
   api_key: PUT_SONARR_API_KEY_HERE
   url: http://X.X.X.X:8989/api/v3
+  profile: XYZ
+  qualityprofileid: X
+  root_path: /foo/bar
 
 radarr:
   api_key: PUT_RADARR_API_KEY_HERE
   url: https://X.X.X.X:7878/api/v3
+  profile: XYZ
+  qualityprofileid: X
+  root_path: /foo/bar
