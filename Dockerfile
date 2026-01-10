@@ -1,5 +1,5 @@
 # Build stage for dependency installation
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 
 # Production stage
-FROM python:3.12-slim AS production
+FROM python:3.14-slim AS production
 
 # Labels
 LABEL org.opencontainers.image.title="grabarr"
