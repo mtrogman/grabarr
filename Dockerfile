@@ -1,23 +1,63 @@
-FROM python:3.9
+# Build stage for dependency installation
+FROM python:3.12-slim AS builder
+
 WORKDIR /app
 
-# Copy requirements.txt from build machine to WORKDIR (/app) folder 
-COPY requirements.txt requirements.txt
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Python requirements
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Make Docker /config volume for optional config file
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+
+# Production stage
+FROM python:3.12-slim AS production
+
+# Labels
+LABEL org.opencontainers.image.title="grabarr"
+LABEL org.opencontainers.image.description="Discord bot for media management with Sonarr and Radarr"
+LABEL org.opencontainers.image.source="https://github.com/mtrogman/grabarr"
+LABEL org.opencontainers.image.licenses="GPL-3.0"
+
+# Create non-root user for security
+RUN groupadd --gid 1000 grabarr && \
+    useradd --uid 1000 --gid grabarr --shell /bin/bash --create-home grabarr
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code
+COPY --chown=grabarr:grabarr src/ /app/src/
+COPY --chown=grabarr:grabarr config.yml.example /config/config.yml.example
+
+# Create config volume
 VOLUME /config
 
-# Copy example config file from build machine to Docker /config folder
-COPY config* /config/
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV GRABARR_CONFIG_PATH=/config/config.yml
 
-# Copy source code from build machine to WORKDIR (/app) folder
-COPY *.py /app/
+# Expose health check port
+EXPOSE 8080
 
-# Delete unnecessary files in WORKDIR (/app) folder (not caught by .dockerignore)
-RUN echo "**** removing unneeded files ****"
-RUN rm -rf /app/requirements.txt
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
-CMD [ "python", "grabarr.py" ]
+# Switch to non-root user
+USER grabarr
+
+# Run application
+CMD ["python", "-m", "src.main"]

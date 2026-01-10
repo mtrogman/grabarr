@@ -1,16 +1,81 @@
-bot:
-  token: PUT_DISCORD_BOT_TOKEN_HERE
-  request_movie: PUT_NAME_OF_REQUEST_MOVIE_APP_CONFIG_HERE
-  request_series: PUT_NAME_OF_REQUEST_SERIES_APP_CONFIG_HERE
+# Grabarr Configuration
+#
+# All values can be overridden with environment variables.
+# Environment variables take precedence over config file values.
+#
+# Environment variable format: GRABARR_<SECTION>_<KEY>
+# Example: GRABARR_BOT_TOKEN, GRABARR_RADARR_API_KEY
 
-sonarr:
-  api_key: PUT_SONARR_API_KEY_HERE
-  url: http://X.X.X.X:8989/api/v3
-  profile: X
-  root_path: X
+bot:
+  # Discord bot token (required)
+  # Env: GRABARR_BOT_TOKEN
+  token: YOUR_DISCORD_BOT_TOKEN_HERE
+
+  # Slash command names (optional)
+  # Env: GRABARR_REQUEST_MOVIE_COMMAND, GRABARR_REQUEST_SHOW_COMMAND
+  request_movie: request_movie
+  request_show: request_show
+
+  # Role-based access control (optional)
+  # List of Discord role IDs that can use commands
+  # Empty list = all users allowed
+  # Env: GRABARR_ALLOWED_ROLE_IDS (comma-separated)
+  allowed_role_ids: []
+
+  # Rate limiting (optional)
+  # Env: GRABARR_RATE_LIMIT_REQUESTS, GRABARR_RATE_LIMIT_WINDOW
+  rate_limit_requests: 10      # Max requests per window
+  rate_limit_window_seconds: 60  # Window duration in seconds
 
 radarr:
-  api_key: PUT_RADARR_API_KEY_HERE
-  url: https://X.X.X.X:7878/api/v3
-  profile: X
-  root_path: x
+  # Radarr API key (required)
+  # Env: GRABARR_RADARR_API_KEY
+  api_key: YOUR_RADARR_API_KEY_HERE
+
+  # Radarr URL including /api/v3 (required)
+  # Env: GRABARR_RADARR_URL
+  url: http://localhost:7878/api/v3
+
+  # Quality profile ID (optional - auto-detected if not set)
+  # Env: GRABARR_RADARR_QUALITY_PROFILE
+  # qualityprofileid: 1
+
+  # Root folder path (optional - auto-detected if not set)
+  # Env: GRABARR_RADARR_ROOT_PATH
+  # root_path: /movies
+
+sonarr:
+  # Sonarr API key (required)
+  # Env: GRABARR_SONARR_API_KEY
+  api_key: YOUR_SONARR_API_KEY_HERE
+
+  # Sonarr URL including /api/v3 (required)
+  # Env: GRABARR_SONARR_URL
+  url: http://localhost:8989/api/v3
+
+  # Quality profile ID (optional - auto-detected if not set)
+  # Env: GRABARR_SONARR_QUALITY_PROFILE
+  # qualityprofileid: 1
+
+  # Root folder path (optional - auto-detected if not set)
+  # Env: GRABARR_SONARR_ROOT_PATH
+  # root_path: /tv
+
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  # Env: GRABARR_LOG_LEVEL
+  level: INFO
+
+  # Log format: json (for aggregation) or text (for humans)
+  # Env: GRABARR_LOG_FORMAT
+  format: json
+
+  # Optional log file path
+  # Env: GRABARR_LOG_FILE
+  # file_path: /config/grabarr.log
+
+# HTTP client settings (optional)
+# Env: GRABARR_HTTP_TIMEOUT, GRABARR_HTTP_MAX_RETRIES, GRABARR_HTTP_RETRY_DELAY
+http_timeout: 15
+http_max_retries: 3
+http_retry_delay: 1.0
