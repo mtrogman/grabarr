@@ -19,7 +19,7 @@ jobs:
           git config --global user.name "$GH_USER"
 
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6.0.1
 
       - name: Check if Minor Version Needs Bump
         id: check_minor_bump
