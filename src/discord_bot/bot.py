@@ -6,6 +6,7 @@ Features:
 - Graceful shutdown handling
 - Health check support
 - Structured logging integration
+- Service resilience with automatic reconnection
 """
 
 import asyncio
@@ -21,6 +22,9 @@ from ..logging_config import get_logger
 from ..utils import RateLimiter
 
 logger = get_logger(__name__)
+
+# Retry configuration for service resilience
+BACKGROUND_RETRY_INTERVAL = 60  # seconds between background retry attempts
 
 
 class GrabarrBot(commands.Bot):
@@ -52,6 +56,11 @@ class GrabarrBot(commands.Bot):
         self.config = config
         self._shutdown_event = asyncio.Event()
         self._is_ready = False
+
+        # Service availability tracking
+        self.radarr_available: bool = False
+        self.sonarr_available: bool = False
+        self._config_retry_task: Optional[asyncio.Task] = None
 
         # Initialize API clients
         self.radarr = RadarrClient(
@@ -87,8 +96,31 @@ class GrabarrBot(commands.Bot):
         """Called when bot is starting up."""
         logger.info("Bot setup starting...")
 
-        # Auto-discover quality profiles and root folders if not configured
-        await self._auto_configure()
+        # Try to initialize services (don't crash if they fail)
+        radarr_ok = await self._initialize_radarr()
+        sonarr_ok = await self._initialize_sonarr()
+
+        # Log status
+        if radarr_ok and sonarr_ok:
+            logger.info("All services initialized successfully")
+        else:
+            services_down = []
+            if not radarr_ok:
+                services_down.append("Radarr")
+            if not sonarr_ok:
+                services_down.append("Sonarr")
+            logger.warning_structured(
+                "Services unavailable at startup",
+                services=services_down,
+                message="Commands will be disabled until they reconnect"
+            )
+
+            # Start background retry task
+            if self._config_retry_task is None or self._config_retry_task.done():
+                self._config_retry_task = asyncio.create_task(
+                    self._retry_unavailable_services()
+                )
+                logger.info("Started background service retry task")
 
         # Load cogs
         from .cogs.movies import MoviesCog
@@ -99,53 +131,128 @@ class GrabarrBot(commands.Bot):
 
         logger.info("Cogs loaded successfully")
 
-    async def _auto_configure(self) -> None:
-        """Auto-discover missing configuration from APIs."""
-        # Radarr auto-config
-        if not self.radarr_quality_profile_id:
-            profile_id = await self.radarr.get_first_quality_profile_id()
-            if profile_id:
-                self.radarr_quality_profile_id = profile_id
-                logger.info_structured(
-                    "Auto-configured Radarr quality profile",
-                    profile_id=profile_id
-                )
-            else:
-                logger.error("Could not auto-discover Radarr quality profile")
+    async def _initialize_radarr(self) -> bool:
+        """
+        Initialize Radarr configuration.
 
-        if not self.radarr_root_folder_path:
-            root_path = await self.radarr.get_first_root_folder_path()
-            if root_path:
-                self.radarr_root_folder_path = root_path
-                logger.info_structured(
-                    "Auto-configured Radarr root folder",
-                    path=root_path
-                )
-            else:
-                logger.error("Could not auto-discover Radarr root folder")
+        Returns:
+            True if successful, False otherwise.
+        """
+        try:
+            # Auto-config quality profile if not set
+            if not self.radarr_quality_profile_id:
+                profile_id = await self.radarr.get_first_quality_profile_id()
+                if profile_id:
+                    self.radarr_quality_profile_id = profile_id
+                    logger.info_structured(
+                        "Auto-configured Radarr quality profile",
+                        profile_id=profile_id
+                    )
+                else:
+                    logger.warning("Radarr: No quality profiles available")
+                    return False
 
-        # Sonarr auto-config
-        if not self.sonarr_quality_profile_id:
-            profile_id = await self.sonarr.get_first_quality_profile_id()
-            if profile_id:
-                self.sonarr_quality_profile_id = profile_id
-                logger.info_structured(
-                    "Auto-configured Sonarr quality profile",
-                    profile_id=profile_id
-                )
-            else:
-                logger.error("Could not auto-discover Sonarr quality profile")
+            # Auto-config root folder if not set
+            if not self.radarr_root_folder_path:
+                root_path = await self.radarr.get_first_root_folder_path()
+                if root_path:
+                    self.radarr_root_folder_path = root_path
+                    logger.info_structured(
+                        "Auto-configured Radarr root folder",
+                        path=root_path
+                    )
+                else:
+                    logger.warning("Radarr: No root folders available")
+                    return False
 
-        if not self.sonarr_root_folder_path:
-            root_path = await self.sonarr.get_first_root_folder_path()
-            if root_path:
-                self.sonarr_root_folder_path = root_path
-                logger.info_structured(
-                    "Auto-configured Sonarr root folder",
-                    path=root_path
-                )
-            else:
-                logger.error("Could not auto-discover Sonarr root folder")
+            self.radarr_available = True
+            logger.info_structured(
+                "Radarr connected successfully",
+                root_folder=self.radarr_root_folder_path,
+                quality_profile_id=self.radarr_quality_profile_id
+            )
+            return True
+
+        except Exception as e:
+            logger.warning_structured(
+                "Radarr initialization failed",
+                error=str(e)
+            )
+            self.radarr_available = False
+            return False
+
+    async def _initialize_sonarr(self) -> bool:
+        """
+        Initialize Sonarr configuration.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        try:
+            # Auto-config quality profile if not set
+            if not self.sonarr_quality_profile_id:
+                profile_id = await self.sonarr.get_first_quality_profile_id()
+                if profile_id:
+                    self.sonarr_quality_profile_id = profile_id
+                    logger.info_structured(
+                        "Auto-configured Sonarr quality profile",
+                        profile_id=profile_id
+                    )
+                else:
+                    logger.warning("Sonarr: No quality profiles available")
+                    return False
+
+            # Auto-config root folder if not set
+            if not self.sonarr_root_folder_path:
+                root_path = await self.sonarr.get_first_root_folder_path()
+                if root_path:
+                    self.sonarr_root_folder_path = root_path
+                    logger.info_structured(
+                        "Auto-configured Sonarr root folder",
+                        path=root_path
+                    )
+                else:
+                    logger.warning("Sonarr: No root folders available")
+                    return False
+
+            self.sonarr_available = True
+            logger.info_structured(
+                "Sonarr connected successfully",
+                root_folder=self.sonarr_root_folder_path,
+                quality_profile_id=self.sonarr_quality_profile_id
+            )
+            return True
+
+        except Exception as e:
+            logger.warning_structured(
+                "Sonarr initialization failed",
+                error=str(e)
+            )
+            self.sonarr_available = False
+            return False
+
+    async def _retry_unavailable_services(self) -> None:
+        """
+        Background task to retry connecting to unavailable services.
+
+        Runs periodically until all services are available.
+        """
+        while True:
+            await asyncio.sleep(BACKGROUND_RETRY_INTERVAL)
+
+            # Stop if all services are available
+            if self.radarr_available and self.sonarr_available:
+                logger.info("All services available, stopping retry task")
+                break
+
+            # Retry unavailable services
+            if not self.radarr_available:
+                logger.info("Retrying Radarr connection...")
+                await self._initialize_radarr()
+
+            if not self.sonarr_available:
+                logger.info("Retrying Sonarr connection...")
+                await self._initialize_sonarr()
 
     async def on_ready(self) -> None:
         """Called when bot is ready."""
@@ -180,6 +287,15 @@ class GrabarrBot(commands.Bot):
     async def close(self) -> None:
         """Graceful shutdown."""
         logger.info("Bot shutting down...")
+
+        # Cancel retry task if running
+        if self._config_retry_task and not self._config_retry_task.done():
+            self._config_retry_task.cancel()
+            try:
+                await self._config_retry_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Background retry task cancelled")
 
         # Close API clients
         await self.radarr.close()

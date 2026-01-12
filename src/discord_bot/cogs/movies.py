@@ -216,6 +216,14 @@ class MoviesCog(commands.Cog):
         set_correlation_id(correlation_id)
 
         try:
+            # Service availability check
+            if not self.bot.radarr_available:
+                await interaction.response.send_message(
+                    "Radarr is currently unavailable. Please try again later.",
+                    ephemeral=True
+                )
+                return
+
             # Check role-based access
             if not self.bot.has_required_role(interaction.user):
                 await interaction.response.send_message(
