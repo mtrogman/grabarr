@@ -27,14 +27,14 @@ jobs:
           echo ::set-output name=year::$(date +'%Y')
 
       - name: Update version number
-        uses: jacobtomlinson/gha-find-replace@2.0.0
+        uses: jacobtomlinson/gha-find-replace@3.0.5
         with:
           find: "VERSIONADDEDBYGITHUB"
           replace: "${{ steps.vars.outputs.version }}"
           regex: false
 
       - name: Update copyright year
-        uses: jacobtomlinson/gha-find-replace@2.0.0
+        uses: jacobtomlinson/gha-find-replace@3.0.5
         with:
           find: "YEARADDEDBYGITHUB"
           replace: "${{ steps.vars.outputs.year }}"
